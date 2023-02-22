@@ -1,3 +1,4 @@
 dist
 playground-temp
 temp
+packages/vite-plugin-react/*
