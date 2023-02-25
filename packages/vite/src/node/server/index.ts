@@ -317,6 +317,7 @@ export interface ResolvedServerUrls {
 export async function createServer(
   inlineConfig: InlineConfig = {},
 ): Promise<ViteDevServer> {
+  // 处理配置文件
   const config = await resolveConfig(inlineConfig, 'serve')
   const { root, server: serverConfig } = config
   const httpsOptions = await resolveHttpsConfig(config.server.https)
@@ -328,24 +329,32 @@ export async function createServer(
   })
 
   const middlewares = connect() as Connect.Server
+
+  // http server 服务创建
   const httpServer = middlewareMode
     ? null
     : await resolveHttpServer(serverConfig, middlewares, httpsOptions)
+
+  // websocket 链接
   const ws = createWebSocketServer(httpServer, config, httpsOptions)
 
   if (httpServer) {
     setClientErrorHandler(httpServer, config.logger)
   }
 
+  // watcher 构建
+  // chokidar 是封装 Node.js 监控文件系统文件变化功能的库
   const watcher = chokidar.watch(
     path.resolve(root),
     resolvedWatchOptions,
   ) as FSWatcher
 
+  // 模块依赖图
   const moduleGraph: ModuleGraph = new ModuleGraph((url, ssr) =>
     container.resolveId(url, undefined, { ssr }),
   )
 
+  // 插件集合
   const container = await createPluginContainer(config, moduleGraph, watcher)
   const closeHttpServer = createServerCloseFn(httpServer)
 
@@ -613,6 +622,8 @@ export async function createServer(
 
   let initingServer: Promise<void> | undefined
   let serverInited = false
+
+  // 启动预构建
   const initServer = async () => {
     if (serverInited) {
       return
@@ -621,6 +632,7 @@ export async function createServer(
       return initingServer
     }
     initingServer = (async function () {
+      // 启动插件的 buildStart 钩子
       await container.buildStart({})
       if (isDepsOptimizerEnabled(config, false)) {
         // non-ssr
