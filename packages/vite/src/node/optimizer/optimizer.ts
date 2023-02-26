@@ -99,6 +99,7 @@ async function createDepsOptimizer(
 
   const sessionTimestamp = Date.now().toString()
 
+  // 加载缓存的 metadata 文件
   const cachedMetadata = loadCachedDepOptimizationMetadata(config, ssr)
 
   let handle: NodeJS.Timeout | undefined
@@ -179,6 +180,8 @@ async function createDepsOptimizer(
     // Initialize discovered deps with manually added optimizeDeps.include info
 
     const deps: Record<string, string> = {}
+
+    // 处理 include
     await addManuallyIncludedOptimizeDeps(deps, config, ssr)
 
     const discovered = await toDiscoveredDependencies(

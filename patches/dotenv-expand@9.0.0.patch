@@ -16,7 +16,7 @@ index c873cc77229d4cd0cf9de98ae0970b25d89f312f..901758c6b665d2935501404fc09c6abd
 @@ -50,9 +54,10 @@ function expand (config) {
      config.parsed[configKey] = _interpolate(value, environment, config)
    }
- 
+
 -  for (const processKey in config.parsed) {
 -    environment[processKey] = config.parsed[processKey]
 -  }
@@ -24,6 +24,6 @@ index c873cc77229d4cd0cf9de98ae0970b25d89f312f..901758c6b665d2935501404fc09c6abd
 +  // for (const processKey in config.parsed) {
 +  //   environment[processKey] = config.parsed[processKey]
 +  // }
- 
+
    return config
  }
