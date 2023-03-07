@@ -145,6 +145,7 @@ async function createDepsOptimizer(
     }
   }
 
+  // process
   let depOptimizationProcessing = newDepOptimizationProcessing()
   let depOptimizationProcessingQueue: DepOptimizationProcessing[] = []
   const resolveEnqueuedProcessingPromises = () => {

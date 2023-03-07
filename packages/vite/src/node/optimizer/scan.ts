@@ -227,7 +227,9 @@ function esbuildScanPlugin(
 
     return result?.s.toString() || transpiledContents
   }
-
+  // onResolve、onLoad 定义解析和加载过程
+  // 每个模块， onResolve 会被依次调用
+  // 每个模块，onLoad 会被依次调用
   return {
     name: 'vite:dep-scan',
     setup(build) {
@@ -245,6 +247,7 @@ function esbuildScanPlugin(
         external: true,
       }))
 
+      // 改为引入虚拟模块
       // local scripts (`<script>` in Svelte and `<script setup>` in Vue)
       build.onResolve({ filter: virtualModuleRE }, ({ path }) => {
         return {
@@ -253,18 +256,21 @@ function esbuildScanPlugin(
           namespace: 'script',
         }
       })
-
+      // ，并将对应的虚拟模块的内容缓存到 script 对象
       build.onLoad({ filter: /.*/, namespace: 'script' }, ({ path }) => {
         return scripts[path]
       })
 
+      // 处理html：提取 script 标签
       // html types: extract script contents -----------------------------------
       build.onResolve({ filter: htmlTypesRE }, async ({ path, importer }) => {
+        // 将模块路径，转成文件的真实路径
         const resolved = await resolve(path, importer)
         if (!resolved) return
         // It is possible for the scanner to scan html types in node_modules.
         // If we can optimize this html type, skip it so it's handled by the
         // bare import resolve, and recorded as optimization dep.
+        // 不处理 node_modules 内的
         if (
           resolved.includes('node_modules') &&
           isOptimizable(resolved, config.optimizeDeps)
@@ -284,11 +290,14 @@ function esbuildScanPlugin(
           // Avoid matching the content of the comment
           raw = raw.replace(commentRE, '<!---->')
           const isHtml = path.endsWith('.html')
+          // html 模块，需要匹配 module 类型的 script，因为只有 module 类型的 script 才能使用 import
           const regex = isHtml ? scriptModuleRE : scriptRE
           regex.lastIndex = 0
           let js = ''
           let scriptId = 0
           let match: RegExpExecArray | null
+
+          // 匹配源码的 script 标签，用 while 循环，因为 html 可能有多个 script 标签
           while ((match = regex.exec(raw))) {
             const [, openTag, content] = match
             const typeMatch = openTag.match(typeRE)
@@ -308,6 +317,7 @@ function esbuildScanPlugin(
             ) {
               continue
             }
+            // esbuild load 钩子可以设置 应的 loader
             let loader: Loader = 'js'
             if (lang === 'ts' || lang === 'tsx' || lang === 'jsx') {
               loader = lang
@@ -315,10 +325,14 @@ function esbuildScanPlugin(
               loader = 'ts'
             }
             const srcMatch = openTag.match(srcRE)
+
+            // 有 src 属性，证明是外部 script
             if (srcMatch) {
               const src = srcMatch[1] || srcMatch[2] || srcMatch[3]
+              // 外部 script，改为用 import 用引入外部 script
               js += `import ${JSON.stringify(src)}\n`
             } else if (content.trim()) {
+              // 内联的 script，它的内容要做成虚拟模块
               // The reason why virtual modules are needed:
               // 1. There can be module scripts (`<script context="module">` in Svelte and `<script>` in Vue)
               // or local scripts (`<script>` in Svelte and `<script setup>` in Vue)
@@ -349,7 +363,7 @@ function esbuildScanPlugin(
                   },
                 }
               }
-
+              // 虚拟模块的路径，如 virtual-module:D:/project/index.html?id=0
               const virtualModulePath = JSON.stringify(
                 virtualModulePrefix + key,
               )
@@ -385,19 +399,25 @@ function esbuildScanPlugin(
         },
       )
 
+      // bare imports：使用名称引用的包
       // bare imports: record and externalize ----------------------------------
       build.onResolve(
         {
           // avoid matching windows volume
+          // 第一个字符串为字母或 @，且第二个字符串不是 : 冒号。如 vite、@vite/plugin-vue
+          // 目的是：避免匹配 window 路径，如 D:/xxx
           filter: /^[\w@][^:]/,
         },
         async ({ path: id, importer, pluginData }) => {
+          // exclude 配置的
           if (moduleListContains(exclude, id)) {
             return externalUnlessEntry({ path: id })
           }
+          // depImports 配置的
           if (depImports[id]) {
             return externalUnlessEntry({ path: id })
           }
+          // 模块转路径
           const resolved = await resolve(id, importer, {
             custom: {
               depScan: { loader: pluginData?.htmlType?.loader },
@@ -408,12 +428,17 @@ function esbuildScanPlugin(
               return externalUnlessEntry({ path: id })
             }
             if (resolved.includes('node_modules') || include?.includes(id)) {
+              // 在 node_modules 记录为 bare import
               // dependency or forced included, externalize and stop crawling
               if (isOptimizable(resolved, config.optimizeDeps)) {
                 depImports[id] = resolved
               }
               return externalUnlessEntry({ path: id })
             } else if (isScannable(resolved)) {
+              // isScannable 判断该文件是否可以扫描，可扫描的文件有 JS、html、vue 等
+              // 因为有可能裸依赖的入口是 css 等非 JS 模块的文件
+              // 真实路径不在 node_modules 中，则证明是 monorepo，实际上代码还是在用户的目录中
+              // 是用户自己写的代码，不应该 external
               const namespace = htmlTypesRE.test(resolved) ? 'html' : undefined
               // linked package, keep crawling
               return {
@@ -421,9 +446,11 @@ function esbuildScanPlugin(
                 namespace,
               }
             } else {
+              // 其他模块不可扫描，直接忽略，external
               return externalUnlessEntry({ path: id })
             }
           } else {
+            // 解析不到依赖，则记录缺少的依赖
             missing[id] = normalizePath(importer)
           }
         },
